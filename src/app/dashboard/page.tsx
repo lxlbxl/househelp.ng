@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import SalaryNegotiation from '@/components/SalaryNegotiation';
 import { 
   User, 
   LogOut, 
@@ -75,115 +76,75 @@ export default function Dashboard() {
   
   useEffect(() => {
     const fetchUserData = async () => {
-      // Don't fetch data if still checking auth or no user
       if (authLoading || !user) {
         return;
       }
 
+      setLoading(true);
+      setError(null);
+
       try {
-        setLoading(true);
-        setError(null);
-        
-        console.log('Fetching dashboard data for user:', user.id);
-        
-        // First check if user has a basic profile
         const { data: basicProfile, error: basicProfileError } = await supabase
           .from('profiles')
-          .select('*')
+          .select('user_type, full_name, email')
           .eq('id', user.id)
           .single();
-        
+
         if (basicProfileError || !basicProfile) {
-          console.error('Profile error:', basicProfileError);
+          console.error('Profile error, redirecting to setup:', basicProfileError);
           router.push('/profile-setup');
           return;
         }
-        
-        console.log('Basic profile found:', basicProfile);
-        
-        // Check user type and redirect accordingly
-        if (basicProfile.user_type === 'admin') {
+
+        const { user_type } = basicProfile;
+
+        if (user_type === 'admin') {
           router.push('/admin');
           return;
-        }
-        
-        if (basicProfile.user_type === 'agency') {
+        } else if (user_type === 'agency') {
           router.push('/agency/dashboard');
           return;
         }
-        
-        // Check if user has a helper profile
-        if (basicProfile.user_type === 'helper') {
-          const { data: helperProfile, error: helperError } = await supabase
-            .from('helper_profiles')
-            .select('*')
-            .eq('user_id', user.id)
-            .single();
-          
-          if (helperProfile && !helperError) {
-            setUserType('helper');
-            setProfile(helperProfile);
-            
-            // Fetch matches for helper
-            const { data: helperMatches } = await supabase
-              .from('matches')
-              .select(`
-                *,
-                household_profile:household_profiles(*),
-                user:profiles!household_profiles(full_name, email)
-              `)
-              .eq('helper_id', helperProfile.id);
-            
-            if (helperMatches) {
-              setMatches(helperMatches);
-            }
-          } else {
-            router.push(`/profile-setup?type=helper`);
+
+        if (!user_type || !['helper', 'household'].includes(user_type)) {
+            router.push('/profile-setup');
             return;
-          }
-        } else if (basicProfile.user_type === 'household') {
-          const { data: householdProfile, error: householdError } = await supabase
-            .from('household_profiles')
-            .select('*')
-            .eq('user_id', user.id)
-            .single();
-          
-          if (householdProfile && !householdError) {
-            setUserType('household');
-            setProfile(householdProfile);
-            
-            // Fetch matches for household
-            const { data: householdMatches } = await supabase
-              .from('matches')
-              .select(`
-                *,
-                helper_profile:helper_profiles(*),
-                user:profiles!helper_profiles(full_name, email)
-              `)
-              .eq('household_id', householdProfile.id);
-            
-            if (householdMatches) {
-              setMatches(householdMatches);
-            }
-          } else {
-            router.push(`/profile-setup?type=household`);
-            return;
-          }
-        } else {
-          // No user type set, redirect to profile setup
-          router.push('/profile-setup');
+        }
+
+        setUserType(user_type as UserType);
+
+        const profileTable = `${user_type}_profiles`;
+        const matchForeignKey = `${user_type}_id`;
+        const otherProfileTable = user_type === 'helper' ? 'household_profiles' : 'helper_profiles';
+        const otherProfileFKey = user_type === 'helper' ? 'household_profiles' : 'helper_profiles';
+
+        const [profileRes, matchesRes] = await Promise.all([
+          supabase.from(profileTable).select('*').eq('user_id', user.id).single(),
+          supabase.from('matches').select(`*, ${otherProfileTable}(*), user:profiles!${otherProfileFKey}(full_name, email)`).eq(matchForeignKey, user.id)
+        ]);
+
+        if (profileRes.error || !profileRes.data) {
+          console.error(`${user_type} profile error, redirecting to setup:`, profileRes.error);
+          router.push(`/profile-setup?type=${user_type}`);
           return;
         }
+
+        setProfile(profileRes.data);
+
+        if (matchesRes.data) {
+          setMatches(matchesRes.data as Match[]);
+        }
+
       } catch (err: any) {
         console.error('Dashboard error:', err);
-        setError(err.message || 'Failed to load dashboard data');
+        setError('Failed to load dashboard data. Please try again later.');
       } finally {
         setLoading(false);
       }
     };
-    
+
     fetchUserData();
-  }, [supabase, router, user, authLoading]);
+  }, [user, authLoading, router, supabase]);
   
   const handleSignOut = async () => {
     await signOut();
@@ -616,12 +577,40 @@ export default function Dashboard() {
                               )}
                               
                               {match.status === 'accepted' && (
-                                <Button asChild size="sm" className="bg-gradient-to-r from-primary to-secondary hover:from-primary/90 hover:to-secondary/90 text-black w-full">
-                                  <Link href={`/messages?match=${match.id}`}>
-                                    <MessageCircle className="h-4 w-4 mr-2" />
-                                    Message
-                                  </Link>
-                                </Button>
+                                <div className="space-y-2 w-full">
+                                  <Button asChild size="sm" className="bg-gradient-to-r from-primary to-secondary hover:from-primary/90 hover:to-secondary/90 text-black w-full">
+                                    <Link href={`/messages?match=${match.id}`}>
+                                      <MessageCircle className="h-4 w-4 mr-2" />
+                                      Message
+                                    </Link>
+                                  </Button>
+                                  {userType === 'household' && matchProfile?.expected_salary && (
+                                    <SalaryNegotiation 
+                                      matchId={match.id}
+                                      helperId={match.helper_id}
+                                      householdId={match.household_id}
+                                      helperExpectedSalary={matchProfile.expected_salary}
+                                      userType={userType}
+                                      onNegotiationUpdate={() => {
+                                        // Refresh matches or handle update
+                                        console.log('Negotiation updated');
+                                      }}
+                                    />
+                                  )}
+                                  {userType === 'helper' && profile?.expected_salary && (
+                                    <SalaryNegotiation 
+                                      matchId={match.id}
+                                      helperId={match.helper_id}
+                                      householdId={match.household_id}
+                                      helperExpectedSalary={profile.expected_salary}
+                                      userType={userType}
+                                      onNegotiationUpdate={() => {
+                                        // Refresh matches or handle update
+                                        console.log('Negotiation updated');
+                                      }}
+                                    />
+                                  )}
+                                </div>
                               )}
                             </div>
                           </CardContent>

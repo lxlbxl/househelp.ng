@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS helper_profiles (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   user_id UUID REFERENCES profiles(id) ON DELETE CASCADE UNIQUE NOT NULL,
   experience_years INTEGER,
-  hourly_rate DECIMAL(10,2),
+  expected_salary DECIMAL(10,2),
   services TEXT[], -- Array of services offered
   skills TEXT[], -- Array of skills
   availability TEXT[], -- Array of available days/times
@@ -113,6 +113,47 @@ CREATE TABLE IF NOT EXISTS matches (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   UNIQUE(helper_id, household_id)
 );
+
+-- Salary Negotiations Table
+CREATE TABLE salary_negotiations (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  match_id UUID REFERENCES matches(id) ON DELETE CASCADE NOT NULL,
+  helper_id UUID REFERENCES helper_profiles(id) ON DELETE CASCADE NOT NULL,
+  household_id UUID REFERENCES household_profiles(id) ON DELETE CASCADE NOT NULL,
+  helper_expected_salary DECIMAL(10,2) NOT NULL,
+  household_offered_salary DECIMAL(10,2),
+  final_agreed_salary DECIMAL(10,2),
+  status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'negotiating', 'agreed', 'rejected')),
+  negotiation_history JSONB DEFAULT '[]'::jsonb,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- RLS Policies for Salary Negotiations
+ALTER TABLE salary_negotiations ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view their own salary negotiations" ON salary_negotiations
+  FOR SELECT USING (
+    helper_id IN (SELECT id FROM helper_profiles WHERE user_id = auth.uid()) OR
+    household_id IN (SELECT id FROM household_profiles WHERE user_id = auth.uid())
+  );
+
+CREATE POLICY "Users can create salary negotiations for their matches" ON salary_negotiations
+  FOR INSERT WITH CHECK (
+    helper_id IN (SELECT id FROM helper_profiles WHERE user_id = auth.uid()) OR
+    household_id IN (SELECT id FROM household_profiles WHERE user_id = auth.uid())
+  );
+
+CREATE POLICY "Users can update their own salary negotiations" ON salary_negotiations
+  FOR UPDATE USING (
+    helper_id IN (SELECT id FROM helper_profiles WHERE user_id = auth.uid()) OR
+    household_id IN (SELECT id FROM household_profiles WHERE user_id = auth.uid())
+  );
+
+CREATE POLICY "Admins can manage all salary negotiations" ON salary_negotiations
+  FOR ALL USING (
+    EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND is_admin = true)
+  );
 
 -- Create bookings table
 CREATE TABLE IF NOT EXISTS bookings (

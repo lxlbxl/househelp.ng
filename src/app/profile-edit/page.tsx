@@ -17,6 +17,7 @@ interface HelperProfile {
   work_preference: 'live_in' | 'live_out' | 'both';
   location: string;
   languages: string[];
+  expected_salary?: number;
 }
 
 interface HouseholdProfile {
@@ -444,6 +445,25 @@ export default function ProfileEdit() {
                     </div>
                   ))}
                 </div>
+              </div>
+              
+              <div>
+                <label htmlFor="expected_salary" className="label">
+                  Expected Monthly Salary (₦)
+                </label>
+                <input
+                  id="expected_salary"
+                  type="number"
+                  min="0"
+                  step="1000"
+                  value={helperProfile.expected_salary || ''}
+                  onChange={(e) => updateHelperProfile('expected_salary', parseFloat(e.target.value) || 0)}
+                  className="input"
+                  placeholder="e.g. 50000"
+                />
+                <p className="text-sm text-gray-600 mt-1">
+                  This is your expected monthly salary and is subject to negotiation with households.
+                </p>
               </div>
             </>
           )}

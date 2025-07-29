@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS helper_profiles (
   experience TEXT,
   bio TEXT,
   location TEXT NOT NULL,
-  hourly_rate DECIMAL(10,2),
+  expected_salary DECIMAL(10,2),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );

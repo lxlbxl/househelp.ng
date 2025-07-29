@@ -75,72 +75,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [supabase.auth, router]);
 
   const signOut = async () => {
-    try {
-      setLoading(true);
-      console.log('Starting sign out process...');
-      
-      // Sign out from Supabase first
-      const { error } = await supabase.auth.signOut();
-      if (error) {
-        console.error('Error signing out from Supabase:', error);
-      } else {
-        console.log('Successfully signed out from Supabase');
+    setLoading(true);
+    await supabase.auth.signOut();
+    setUser(null);
+    setSession(null);
+
+    // Clear the Supabase token from cookies
+    const cookies = document.cookie.split(';');
+    for (let i = 0; i < cookies.length; i++) {
+      const cookie = cookies[i];
+      const eqPos = cookie.indexOf('=');
+      const name = eqPos > -1 ? cookie.substr(0, eqPos) : cookie;
+      if (name.trim().startsWith('sb-')) {
+        document.cookie = name + '=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/';
       }
-      
-      // Clear local state
-      setUser(null);
-      setSession(null);
-      
-      // Clear all possible storage items
-      if (typeof window !== 'undefined') {
-        try {
-          // Clear localStorage
-          const localKeys = Object.keys(localStorage);
-          localKeys.forEach(key => {
-            if (key.includes('supabase') || key.includes('sb-') || key.startsWith('supabase.auth.token')) {
-              localStorage.removeItem(key);
-              console.log('Removed localStorage key:', key);
-            }
-          });
-          
-          // Clear sessionStorage
-          const sessionKeys = Object.keys(sessionStorage);
-          sessionKeys.forEach(key => {
-            if (key.includes('supabase') || key.includes('sb-')) {
-              sessionStorage.removeItem(key);
-              console.log('Removed sessionStorage key:', key);
-            }
-          });
-          
-          // Clear any cookies (if any)
-          document.cookie.split(";").forEach(function(c) { 
-            document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/"); 
-          });
-          
-        } catch (storageError) {
-          console.error('Error clearing storage:', storageError);
-        }
-      }
-      
-      console.log('Logout complete, redirecting...');
-      
-      // Use router.push instead of window.location for better Next.js handling
-      router.push('/');
-      
-      // Also refresh the page to ensure clean state
-      setTimeout(() => {
-        window.location.reload();
-      }, 100);
-      
-    } catch (error) {
-      console.error('Error in signOut:', error);
-      // Even if there's an error, clear local state and redirect
-      setUser(null);
-      setSession(null);
-      router.push('/');
-    } finally {
-      setLoading(false);
     }
+
+    router.push('/');
+    setLoading(false);
   };
 
   const refreshSession = async () => {

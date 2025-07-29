@@ -19,7 +19,7 @@ interface HelperProfile {
   experience_years: number;
   bio: string;
   location: string;
-  hourly_rate?: number;
+  expected_salary?: number;
 }
 
 interface HouseholdProfile {
@@ -131,7 +131,8 @@ export default function ProfileSetup() {
 
   // Helper functions for form updates
   const updateHelperProfile = (field: keyof HelperProfile, value: any) => {
-    setHelperProfile(prev => ({ ...prev, [field]: value }));
+    const numericValue = (field === 'experience_years' || field === 'expected_salary') ? parseFloat(value) : value;
+    setHelperProfile(prev => ({ ...prev, [field]: numericValue }));
   };
   
   const updateHouseholdProfile = (field: keyof HouseholdProfile, value: any) => {
@@ -159,40 +160,32 @@ export default function ProfileSetup() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!userId || !userType) return;
-    
+
     setLoading(true);
     setError(null);
-    
+
     try {
-      if (userType === 'helper') {
-        // Update helper profile
-        const { error } = await supabase
-          .from('helper_profiles')
-          .insert([
-            {
-              user_id: userId,
-              ...helperProfile,
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString(),
-            },
-          ]);
-          
-        if (error) throw error;
-      } else {
-        // Update household profile
-        const { error } = await supabase
-          .from('household_profiles')
-          .insert([
-            {
-              user_id: userId,
-              ...householdProfile,
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString(),
-            },
-          ]);
-          
-        if (error) throw error;
-      }
+      const profileData = userType === 'helper' ? helperProfile : householdProfile;
+      const tableName = userType === 'helper' ? 'helper_profiles' : 'household_profiles';
+
+      const { data, error } = await supabase
+        .from(tableName)
+        .select('id')
+        .eq('user_id', userId)
+        .single();
+
+      const { error: upsertError } = await supabase
+        .from(tableName)
+        .upsert({ 
+            id: data?.id || crypto.randomUUID(),
+            user_id: userId, 
+            ...profileData, 
+            updated_at: new Date().toISOString() 
+        }, { onConflict: 'user_id' });
+
+      if (upsertError) throw upsertError;
+
+      if (error) throw error;
       
       // Redirect to dashboard
       router.push('/dashboard');
@@ -349,16 +342,19 @@ export default function ProfileSetup() {
                     <div className="space-y-3">
                       <Label className="text-white flex items-center gap-2">
                         <DollarSign className="h-4 w-4" />
-                        Hourly Rate (₦)
+                        Expected Monthly Salary (₦)
                       </Label>
                       <Input
                         type="number"
                         min="0"
-                        value={helperProfile.hourly_rate || ''}
-                        onChange={(e) => updateHelperProfile('hourly_rate', parseInt(e.target.value) || undefined)}
+                        value={helperProfile.expected_salary || ''}
+                        onChange={(e) => updateHelperProfile('expected_salary', parseInt(e.target.value) || undefined)}
                         className="bg-white/10 border-white/20 text-white"
-                        placeholder="e.g., 2000"
+                        placeholder="e.g., 50000"
                       />
+                      <p className="text-white/70 text-sm">
+                        This is your expected monthly salary. Households can negotiate with you on this amount.
+                      </p>
                     </div>
                   </div>
 
